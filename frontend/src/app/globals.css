@@ -1,0 +1,448 @@
+@import "tailwindcss";
+
+/* ============================================================
+   REX · Undercurrent — design tokens
+   ============================================================ */
+@theme {
+  /* Backgrounds — absolute black is the canvas */
+  --color-void: #000000;
+  --color-ink: #05070a;
+
+  /* Text */
+  --color-fg: #f4f3ef; /* warm off-white */
+  --color-muted: #8a8f98;
+  --color-faint: #4a4f57;
+
+  /* Brand / interactive */
+  --color-blue: #025ee8;
+  --color-blue-bright: #2c7bf0;
+
+  /* Data accents */
+  --color-cyan: #00e5ff;
+  --color-violet: #8e2de2;
+  --color-fail: #ff4444;
+  --color-wait: #f5a623;
+
+  /* Fonts (bound to next/font variables in layout.tsx) */
+  --font-serif: var(--font-playfair), Georgia, serif;
+  --font-sans: var(--font-hanken), system-ui, sans-serif;
+  --font-mono: var(--font-fira-code), ui-monospace, monospace;
+  --font-deva: var(--font-tiro-deva), Georgia, serif;
+  --font-deva-sans: var(--font-mukta), system-ui, sans-serif;
+
+  /* Motion */
+  --ease-cinematic: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Raw values reused in inline styles / rgba mixes */
+:root {
+  --brand-blue-glow: rgba(0, 186, 242, 0.45);
+  --grid-line: rgba(90, 130, 190, 0.14);
+  --wire-line: rgba(150, 205, 255, 0.22);
+  --glass-fill: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-border-hover: rgba(2, 94, 232, 0.65);
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  /* No smooth scroll: it made route changes animate-scroll from the previous
+     page's offset (e.g. landing CTA -> story started at a late beat and slid up).
+     Natural wheel/trackpad scrolling is unaffected. */
+  scroll-behavior: auto;
+}
+
+body {
+  background-color: var(--color-void);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+/* Devanagari locale: swap headline + body families */
+:lang(hi) {
+  --font-serif: var(--font-deva), Georgia, serif;
+  --font-sans: var(--font-deva-sans), system-ui, sans-serif;
+}
+
+::selection {
+  background: var(--color-blue);
+  color: var(--color-fg);
+}
+
+/* Thin custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-void);
+}
+::-webkit-scrollbar-thumb {
+  background: #1a1d22;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #262a30;
+}
+
+/* ============================================================
+   Atmosphere utilities
+   ============================================================ */
+
+/* Film grain overlay — kills banding on black, adds texture */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: screen;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: grain-shift 0.6s steps(3) infinite;
+}
+@keyframes grain-shift {
+  0% { transform: translate(0, 0); }
+  33% { transform: translate(-2%, 1%); }
+  66% { transform: translate(1%, -2%); }
+  100% { transform: translate(0, 0); }
+}
+
+/* Radial vignette — focus the eye center-frame */
+.vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 55%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
+}
+
+/* The "revenue surface" wire-grid horizon (CSS stand-in for the R3F plane) */
+.revenue-surface {
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 60px 60px;
+  transform: perspective(600px) rotateX(70deg);
+  transform-origin: center bottom;
+  mask-image: linear-gradient(to top, #000 0%, transparent 75%);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 75%);
+}
+
+/* Kicker — the small-caps mono line above a headline */
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.32em;
+  color: var(--color-muted);
+}
+
+/* Mono wireframe entity label */
+.wire-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--color-faint);
+}
+
+/* Serif display headline default */
+.display {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  color: var(--color-fg);
+}
+
+/* Primary blue CTA with bloom */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--color-blue);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-weight: 500;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+    0 0 24px var(--brand-blue-glow);
+  transition: background 320ms var(--ease-standard),
+    box-shadow 320ms var(--ease-standard), transform 320ms var(--ease-standard);
+}
+.btn-primary:hover {
+  background: var(--color-blue-bright);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14) inset,
+    0 0 40px var(--brand-blue-glow);
+  transform: translateY(-1px);
+}
+
+/* Ghost button */
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--glass-border);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  transition: border-color 320ms var(--ease-standard);
+}
+.btn-ghost:hover {
+  border-color: var(--glass-border-hover);
+}
+
+/* Small entity label chip inside the 3D scene (drei Html) */
+.scene-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #c2c8d0;
+  background: rgba(120, 132, 150, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 3px 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  backdrop-filter: blur(3px);
+}
+.scene-label--agent {
+  color: #dbe8ff;
+  background: rgba(2, 94, 232, 0.18);
+  border-color: rgba(2, 94, 232, 0.4);
+}
+
+/* Blinking terminal cursor */
+.blink {
+  animation: blink 1.1s steps(1) infinite;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* Accessibility: honor reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .grain { animation: none; }
+}
+
+/* ============================================================
+   Story theme — Nayantara's world (Claude-style warm light)
+   Applied to <html> only on the /story route, so the dark app
+   is untouched. Re-mapping the semantic tokens recolours the
+   whole route (navbar included) in one move.
+   ============================================================ */
+/* Tokens on the class itself so the story wrapper gets them at SSR (no flash);
+   overlay-hiding + body background are tied to <html> (added on mount). */
+.theme-light {
+  --color-void: #f5f4ef; /* warm ivory canvas */
+  --color-ink: #efece3;
+  --color-fg: #23201c; /* warm charcoal */
+  --color-muted: #6b6862;
+  --color-faint: #a8a399;
+  --color-clay: #cc785c; /* Claude clay accent */
+  --color-clay-soft: #e9d9cf;
+  --serif-story: var(--font-fraunces), Georgia, serif;
+}
+html.theme-light body {
+  background-color: var(--color-void);
+  color: var(--color-fg);
+}
+/* Kill the dark-mode atmosphere on the light route. */
+html.theme-light .grain,
+html.theme-light .vignette {
+  display: none;
+}
+/* Custom scrollbar for the light route. */
+html.theme-light ::-webkit-scrollbar-track { background: #ece9e0; }
+html.theme-light ::-webkit-scrollbar-thumb { background: #d8d2c6; }
+html.theme-light ::selection { background: var(--color-clay); color: #fff; }
+
+/* Fraunces display headline for the story. */
+.story-display {
+  font-family: var(--serif-story);
+  font-weight: 500;
+  line-height: 1.03;
+  letter-spacing: -0.015em;
+  color: var(--color-fg);
+}
+.story-kicker {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  color: var(--color-clay);
+}
+
+/* Hand-drawn speech cloud with a little tail. */
+.speech-cloud {
+  position: relative;
+  background: #fffdf8;
+  border: 1.5px solid #e6e1d6;
+  border-radius: 1.4rem;
+  box-shadow: 0 10px 30px -12px rgba(60, 50, 40, 0.25);
+}
+.speech-cloud::after {
+  content: "";
+  position: absolute;
+  left: 2.2rem;
+  bottom: -0.7rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  background: #fffdf8;
+  border-right: 1.5px solid #e6e1d6;
+  border-bottom: 1.5px solid #e6e1d6;
+  transform: rotate(45deg);
+}
+
+/* Soft blob behind the doodle (echoes the reference art). */
+.doodle-blob {
+  background: radial-gradient(
+    circle at 50% 45%,
+    var(--color-clay-soft) 0%,
+    rgba(233, 217, 207, 0.35) 45%,
+    transparent 70%
+  );
+  filter: blur(2px);
+}
+
+/* ============================================================
+   Mission Control · Dashboard theme (light modern SaaS)
+   A self-contained token scope so the dark REX tokens are never
+   fought with. Applied by tagging <html class="theme-dashboard"> on mount.
+   ============================================================ */
+.theme-dashboard {
+  --d-bg: #fafaf9;
+  --d-surface: #ffffff;
+  --d-surface-2: #f5f5f4;
+  --d-border: #e7e5e4;
+  --d-border-strong: #d6d3d1;
+  --d-ink: #1c1917;
+  --d-muted: #78716c;
+  --d-faint: #a8a29e;
+  --d-accent: #0f766e;
+  --d-accent-soft: #f0fdfa;
+  --d-ok: #059669;
+  --d-ok-soft: #ecfdf5;
+  --d-warn: #d97706;
+  --d-warn-soft: #fffbeb;
+  --d-bad: #e11d48;
+  --d-bad-soft: #fff1f2;
+  --d-info: #0284c7;
+  --d-info-soft: #f0f9ff;
+  --d-slate: #475569;
+  --d-slate-soft: #f1f5f9;
+  --d-shadow: 0 1px 2px rgba(28, 25, 23, 0.04), 0 1px 3px rgba(28, 25, 23, 0.06);
+  --font-ui: var(--font-geist), system-ui, sans-serif;
+  --font-num: var(--font-geist-mono), ui-monospace, monospace;
+  font-family: var(--font-ui);
+}
+html.theme-dashboard body {
+  background-color: var(--d-bg);
+  color: var(--d-ink);
+  font-family: var(--font-ui);
+  /* Faint hairline grid for depth — barely visible, but it stops the page
+     reading as a flat white sheet. Fixed so it doesn't scroll with content. */
+  background-image:
+    linear-gradient(to right, rgba(28, 25, 23, 0.022) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(28, 25, 23, 0.022) 1px, transparent 1px);
+  background-size: 46px 46px;
+  background-attachment: fixed;
+}
+
+/* ---- Overview hero (the GRRR banner) ---- */
+.d-hero {
+  color: #fff;
+  background: radial-gradient(130% 150% at 0% 0%, #14b8a6 0%, #0f766e 42%, #115e59 100%);
+  box-shadow: 0 18px 40px -20px rgba(15, 118, 110, 0.55);
+}
+.d-hero-mesh {
+  position: absolute;
+  inset: -25%;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 40% at 18% 28%, rgba(153, 246, 228, 0.4), transparent 60%),
+    radial-gradient(34% 36% at 82% 18%, rgba(45, 212, 191, 0.32), transparent 60%),
+    radial-gradient(46% 48% at 72% 92%, rgba(6, 78, 74, 0.5), transparent 62%);
+  filter: blur(6px);
+  animation: d-hero-float 15s ease-in-out infinite alternate;
+}
+@keyframes d-hero-float {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(-3%, -2.5%, 0) scale(1.09); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .d-hero-mesh { animation: none; }
+}
+html.theme-dashboard .grain,
+html.theme-dashboard .vignette {
+  display: none;
+}
+html.theme-dashboard ::-webkit-scrollbar { width: 10px; height: 10px; }
+html.theme-dashboard ::-webkit-scrollbar-track { background: transparent; }
+html.theme-dashboard ::-webkit-scrollbar-thumb {
+  background: #dcd9d5; border-radius: 6px; border: 2px solid var(--d-bg);
+}
+html.theme-dashboard ::selection { background: var(--d-accent); color: #fff; }
+
+/* Tabular monospace numerals — the dashboard's signature for any figure. */
+.d-num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+/* Uppercase micro-label used on cards / axes. */
+.d-label {
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--d-muted);
+}
+.d-card {
+  background: var(--d-surface);
+  border: 1px solid var(--d-border);
+  border-radius: 14px;
+  box-shadow: var(--d-shadow);
+}
+
+/* Table row hover with a per-row accent tick (set --row-accent inline). */
+html.theme-dashboard .d-row { transition: background-color 0.12s ease; }
+html.theme-dashboard .d-row:hover {
+  background: var(--d-surface-2);
+  box-shadow: inset 3px 0 0 var(--row-accent, var(--d-accent));
+}
+
+/* Dashboard uses Geist (Latin-only) — fall back to the Devanagari sans under HI
+   so the [ EN | HI ] toggle renders Hindi correctly. Higher specificity + later
+   source order than the base `.theme-dashboard` rule, so it wins. */
+.theme-dashboard:lang(hi) {
+  --font-ui: var(--font-deva-sans), system-ui, sans-serif;
+}
