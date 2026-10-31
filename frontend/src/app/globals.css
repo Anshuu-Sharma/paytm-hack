@@ -1,4 +1,16 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@font-face {
+  font-family: "Tiny5Duo";
+  src: url("/Tiny5Duo.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: block;
+}
 
 /* ============================================================
    REX · Undercurrent — design tokens
@@ -43,6 +55,38 @@
   --glass-fill: rgba(255, 255, 255, 0.03);
   --glass-border: rgba(255, 255, 255, 0.1);
   --glass-border-hover: rgba(2, 94, 232, 0.65);
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
 }
 
 /* ============================================================
@@ -333,91 +377,104 @@ html.theme-light ::selection { background: var(--color-clay); color: #fff; }
 }
 
 /* ============================================================
-   Mission Control · Dashboard theme (light modern SaaS)
-   A self-contained token scope so the dark REX tokens are never
-   fought with. Applied by tagging <html class="theme-dashboard"> on mount.
+   Mission Control · Dashboard theme — dark bento
+   Deep canvas, warm amber-green accent, bento tiles.
+   Applied by tagging <html class="theme-dashboard"> on mount.
    ============================================================ */
 .theme-dashboard {
-  --d-bg: #fafaf9;
-  --d-surface: #ffffff;
-  --d-surface-2: #f5f5f4;
-  --d-border: #e7e5e4;
-  --d-border-strong: #d6d3d1;
-  --d-ink: #1c1917;
-  --d-muted: #78716c;
-  --d-faint: #a8a29e;
-  --d-accent: #0f766e;
-  --d-accent-soft: #f0fdfa;
-  --d-ok: #059669;
-  --d-ok-soft: #ecfdf5;
-  --d-warn: #d97706;
-  --d-warn-soft: #fffbeb;
-  --d-bad: #e11d48;
-  --d-bad-soft: #fff1f2;
-  --d-info: #0284c7;
-  --d-info-soft: #f0f9ff;
-  --d-slate: #475569;
-  --d-slate-soft: #f1f5f9;
-  --d-shadow: 0 1px 2px rgba(28, 25, 23, 0.04), 0 1px 3px rgba(28, 25, 23, 0.06);
-  --font-ui: var(--font-geist), system-ui, sans-serif;
+  /* Canvas + surfaces */
+  --d-bg:          #0c0c0f;
+  --d-surface:     #141418;
+  --d-surface-2:   #1d1d24;
+  --d-border:      rgba(255, 255, 255, 0.07);
+  --d-border-strong: rgba(255, 255, 255, 0.14);
+
+  /* Text */
+  --d-ink:         #f0ede8;
+  --d-muted:       #8a8f9c;
+  --d-faint:       #4a505e;
+
+  /* Semantic data colours */
+  --d-accent:      oklch(0.82 0.18 152);         /* teal-green = "recovered" */
+  --d-accent-soft: oklch(0.82 0.18 152 / 0.13);
+  --d-ok:          oklch(0.82 0.18 152);
+  --d-ok-soft:     oklch(0.82 0.18 152 / 0.13);
+  --d-warn:        oklch(0.87 0.18 88);           /* warm amber = "in-flight" */
+  --d-warn-soft:   oklch(0.87 0.18 88 / 0.13);
+  --d-bad:         oklch(0.66 0.22 25);           /* warm red = "lost" */
+  --d-bad-soft:    oklch(0.66 0.22 25 / 0.13);
+  --d-info:        oklch(0.72 0.15 250);          /* cool blue = "info" */
+  --d-info-soft:   oklch(0.72 0.15 250 / 0.13);
+  --d-slate:       #8a9ab5;
+  --d-slate-soft:  rgba(138, 154, 181, 0.12);
+
+  /* Shadow: ring + drop */
+  --d-shadow: 0 0 0 1px rgba(255, 255, 255, 0.055),
+              0 2px 12px rgba(0, 0, 0, 0.5);
+
+  --font-ui:  var(--font-geist), system-ui, sans-serif;
   --font-num: var(--font-geist-mono), ui-monospace, monospace;
   font-family: var(--font-ui);
 }
+
 html.theme-dashboard body {
   background-color: var(--d-bg);
   color: var(--d-ink);
   font-family: var(--font-ui);
-  /* Faint hairline grid for depth — barely visible, but it stops the page
-     reading as a flat white sheet. Fixed so it doesn't scroll with content. */
+  /* Barely-visible dot grid — gives depth without noise */
   background-image:
-    linear-gradient(to right, rgba(28, 25, 23, 0.022) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(28, 25, 23, 0.022) 1px, transparent 1px);
-  background-size: 46px 46px;
+    radial-gradient(circle, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 28px 28px;
   background-attachment: fixed;
 }
 
 /* ---- Overview hero (the GRRR banner) ---- */
 .d-hero {
   color: #fff;
-  background: radial-gradient(130% 150% at 0% 0%, #14b8a6 0%, #0f766e 42%, #115e59 100%);
-  box-shadow: 0 18px 40px -20px rgba(15, 118, 110, 0.55);
+  background: radial-gradient(130% 160% at 0% 0%,
+    oklch(0.82 0.18 152) 0%,
+    oklch(0.6 0.18 158) 45%,
+    oklch(0.36 0.13 165) 100%);
+  box-shadow: 0 20px 50px -20px oklch(0.82 0.18 152 / 0.5);
 }
 .d-hero-mesh {
   position: absolute;
   inset: -25%;
   pointer-events: none;
   background:
-    radial-gradient(38% 40% at 18% 28%, rgba(153, 246, 228, 0.4), transparent 60%),
-    radial-gradient(34% 36% at 82% 18%, rgba(45, 212, 191, 0.32), transparent 60%),
-    radial-gradient(46% 48% at 72% 92%, rgba(6, 78, 74, 0.5), transparent 62%);
+    radial-gradient(38% 40% at 18% 28%, oklch(0.82 0.18 152 / 0.32), transparent 60%),
+    radial-gradient(34% 36% at 82% 18%, oklch(0.72 0.16 165 / 0.22), transparent 60%),
+    radial-gradient(46% 48% at 72% 92%, oklch(0.30 0.1  165 / 0.55), transparent 62%);
   filter: blur(6px);
   animation: d-hero-float 15s ease-in-out infinite alternate;
 }
 @keyframes d-hero-float {
   from { transform: translate3d(0, 0, 0) scale(1); }
-  to { transform: translate3d(-3%, -2.5%, 0) scale(1.09); }
+  to   { transform: translate3d(-3%, -2.5%, 0) scale(1.09); }
 }
 @media (prefers-reduced-motion: reduce) {
   .d-hero-mesh { animation: none; }
 }
+
 html.theme-dashboard .grain,
-html.theme-dashboard .vignette {
-  display: none;
-}
-html.theme-dashboard ::-webkit-scrollbar { width: 10px; height: 10px; }
+html.theme-dashboard .vignette { display: none; }
+
+html.theme-dashboard ::-webkit-scrollbar { width: 8px; height: 8px; }
 html.theme-dashboard ::-webkit-scrollbar-track { background: transparent; }
 html.theme-dashboard ::-webkit-scrollbar-thumb {
-  background: #dcd9d5; border-radius: 6px; border: 2px solid var(--d-bg);
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  border: 2px solid var(--d-bg);
 }
-html.theme-dashboard ::selection { background: var(--d-accent); color: #fff; }
+html.theme-dashboard ::selection { background: var(--d-accent); color: #000; }
 
-/* Tabular monospace numerals — the dashboard's signature for any figure. */
+/* Tabular monospace numerals */
 .d-num {
   font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }
-/* Uppercase micro-label used on cards / axes. */
+/* Micro-label: small caps mono */
 .d-label {
   font-family: var(--font-ui);
   font-size: 0.6875rem;
@@ -426,23 +483,111 @@ html.theme-dashboard ::selection { background: var(--d-accent); color: #fff; }
   text-transform: uppercase;
   color: var(--d-muted);
 }
+/* Bento tile — 26px radius, dark surface, ring shadow */
 .d-card {
   background: var(--d-surface);
   border: 1px solid var(--d-border);
-  border-radius: 14px;
+  border-radius: 26px;
   box-shadow: var(--d-shadow);
 }
 
-/* Table row hover with a per-row accent tick (set --row-accent inline). */
+/* Table row hover */
 html.theme-dashboard .d-row { transition: background-color 0.12s ease; }
 html.theme-dashboard .d-row:hover {
   background: var(--d-surface-2);
   box-shadow: inset 3px 0 0 var(--row-accent, var(--d-accent));
 }
 
-/* Dashboard uses Geist (Latin-only) — fall back to the Devanagari sans under HI
-   so the [ EN | HI ] toggle renders Hindi correctly. Higher specificity + later
-   source order than the base `.theme-dashboard` rule, so it wins. */
+/* Devanagari fallback */
 .theme-dashboard:lang(hi) {
   --font-ui: var(--font-deva-sans), system-ui, sans-serif;
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
 }

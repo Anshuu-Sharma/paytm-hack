@@ -1,0 +1,21 @@
+1. AI Customer Win-Back & Dormancy Predictor
+The Problem: A kirana or retail merchant loses 20–30% of their regular customers every quarter without ever noticing who stopped coming.
+The Feature: REX tracks repeat QR scan intervals. If an account that visited every week stops scanning for 18 days, REX flags them as "At-Risk Customer".
+The AI Action: With 1 tap, REX generates a localized, polite WhatsApp broadcast offer:
+
+"Namaste Priya ji! Aap kaafi dino se Sharma Supermarket nahi aaye. Is hafte aane par payein flat ₹50 Paytm Cashback on ₹400+ purchases!"
+
+Why Judges Love It: It turns QR transaction logs into proactive revenue generation.
+
+
+🏆 Addition 1: "Paytm Soundbox 2.0" — The Daily AI Audio Briefing
+The Pitch: Today, the Paytm Soundbox only says "Paytm par 50 rupaye prapt hue". With REX and Sarvam AI, Soundbox becomes the merchant's daily spoken business advisor.
+How it looks in the demo:
+An audio widget on Mission Control: "REX Morning Soundbox Brief" (with an instant play button using your Sarvam TTS).
+Spoken Script (in Hindi/Hinglish):
+
+"Namaste Sharma ji! Kal ki total collection ₹24,500 rahi. REX ne 3 failed payments aur ₹4,200 ka overdue bill recover kar liya hai. Aaj Shaam ko Amul milk ka stock khatam ho sakta hai. Kya supplier ko re-order message bhej doon?"
+
+Why it wins: Every Paytm judge knows and loves the Soundbox. Showing Soundbox transformed from a dumb speaker into a proactive AI copilot is an instant crowd-pleaser.
+
+

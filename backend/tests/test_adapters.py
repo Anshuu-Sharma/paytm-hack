@@ -41,8 +41,8 @@ def test_whatsapp_live_failure_degrades_gracefully():
     assert result.detail is not None
 
 
-def test_voice_stays_simulated_without_vapi_key():
-    # No Vapi credentials -> voice never goes live, even if live_mode is on.
+def test_voice_stays_simulated_without_key():
+    # No credentials -> voice never goes live, even if live_mode is on.
     adapter = VoiceAdapter(live_mode=True, api_key="")
     result = adapter.call(to="+919999999999", script="namaste")
     assert result.simulated is True

@@ -17,8 +17,8 @@ from app.utils import utcnow
 class CallSession(Base):
     """A voice-recovery call for a transaction.
 
-    ``provider`` is null while calls are simulated; a live provider (Vapi /
-    ElevenLabs / LiveKit) stamps its name once wired. The transcript lives in
+    ``provider`` is "simulated" while calls are generated offline; a live provider
+    ("sarvam") stamps its name during live voice calls. The transcript lives in
     ``CallTurn`` rows so the call interface can replay it turn by turn.
     """
 

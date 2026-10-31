@@ -7,7 +7,7 @@
  */
 
 import { animate, motion } from "framer-motion";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface XY {
   x: number;
@@ -52,6 +52,20 @@ function buildPath(points: XY[]): string {
   return points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
 }
 
+/** Cubic bezier smooth path — same algorithm as ChartTile in the bento file. */
+function smooth(pts: Array<[number, number]>): string {
+  return pts
+    .map(([x, y], i) => {
+      if (i === 0) return `M ${x.toFixed(1)} ${y.toFixed(1)}`;
+      const [px, py] = pts[i - 1];
+      const m = (px + x) / 2;
+      return `C ${m.toFixed(1)} ${py.toFixed(1)}, ${m.toFixed(1)} ${y.toFixed(1)}, ${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
+type ChartRange = "2W" | "1M" | "All";
+
 /** Tiny inline trend line for KPI cards. */
 export function Sparkline({
   values,
@@ -88,7 +102,10 @@ export function Sparkline({
   );
 }
 
-/** Cumulative area chart with a soft gradient fill and light gridlines. */
+/**
+ * Interactive area chart — smooth bezier curves, hover crosshair, range pills.
+ * Pattern taken from ChartTile in the bento design reference.
+ */
 export function AreaChart({
   data,
   color,
@@ -98,71 +115,221 @@ export function AreaChart({
   color: string;
   height?: number;
 }) {
-  const W = 760;
+  const [range, setRange] = useState<ChartRange>("All");
+  const [hover, setHover] = useState<number | null>(null);
+
+  const W = 640;
   const H = height;
-  const padL = 8;
-  const padR = 8;
-  const padT = 16;
-  const padB = 26;
+  const padL = 4;
+  const padR = 4;
+  const padT = 10;
+  const padB = 28;
+
   if (data.length < 2) {
     return (
-      <div
-        className="flex items-center justify-center text-[12px]"
-        style={{ height, color: "var(--d-faint)" }}
-      >
+      <div className="flex items-center justify-center text-[12px]" style={{ height, color: "var(--d-faint)" }}>
         Not enough data yet.
       </div>
     );
   }
-  const max = Math.max(...data.map((d) => d.value)) || 1;
+
+  const take = { "2W": 14, "1M": 30, "All": data.length }[range];
+  const slice = data.slice(-take);
+  const max = Math.max(...slice.map((d) => d.value)) || 1;
   const innerW = W - padL - padR;
   const innerH = H - padT - padB;
-  const pts = data.map((d, i) => ({
-    x: padL + (i / (data.length - 1)) * innerW,
-    y: padT + innerH - (d.value / max) * innerH,
-  }));
-  const line = buildPath(pts);
-  const area = `${line} L ${pts[pts.length - 1].x} ${padT + innerH} L ${pts[0].x} ${
-    padT + innerH
-  } Z`;
-  const gridYs = [0, 0.25, 0.5, 0.75, 1].map((f) => padT + innerH - f * innerH);
-  // Thin the x labels so they don't collide.
-  const step = Math.ceil(data.length / 7);
+
+  const pts: [number, number][] = slice.map((d, i) => [
+    padL + (i / Math.max(slice.length - 1, 1)) * innerW,
+    padT + innerH - (d.value / max) * innerH,
+  ]);
+
+  const la = smooth(pts);
+  const area = `${la} L ${pts[pts.length - 1][0]} ${padT + innerH} L ${pts[0][0]} ${padT + innerH} Z`;
+  const idx = hover ?? slice.length - 1;
+  const uid = `af-${color.replace(/[^a-z0-9]/gi, "")}`;
+
+  /* sparse x-axis labels */
+  const labelStep = Math.ceil(slice.length / 5);
+  const labelIdxs = slice
+    .map((_, i) => i)
+    .filter((i) => i === 0 || i % labelStep === 0 || i === slice.length - 1);
+
+  const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setHover(Math.max(0, Math.min(slice.length - 1, Math.round(((e.clientX - r.left) / r.width) * (slice.length - 1)))));
+  };
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="area-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.18" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {gridYs.map((y, i) => (
-        <line key={i} x1={padL} y1={y} x2={W - padR} y2={y} stroke="var(--d-border)" strokeWidth="1" />
-      ))}
-      <path d={area} fill="url(#area-fill)" />
-      <path d={line} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
-      {pts.map((p, i) =>
-        i === pts.length - 1 ? (
-          <circle key={i} cx={p.x} cy={p.y} r="3.5" fill={color} stroke="var(--d-surface)" strokeWidth="2" />
-        ) : null
-      )}
-      {data.map((d, i) =>
-        i % step === 0 || i === data.length - 1 ? (
-          <text
-            key={i}
-            x={pts[i].x}
-            y={H - 8}
-            textAnchor="middle"
-            fontSize="10"
-            fill="var(--d-faint)"
-            fontFamily="var(--font-num)"
+    <div>
+      {/* Pills + hovered label */}
+      <div className="mb-3 flex items-center justify-between gap-3 px-1">
+        <p className="d-num text-[13px] font-medium" style={{ color: "var(--d-muted)" }} aria-live="polite">
+          {slice[idx]?.label ?? ""}
+        </p>
+        <div role="radiogroup" aria-label="Chart range" className="inline-flex rounded-full border p-0.5" style={{ borderColor: "var(--d-border)" }}>
+          {(["2W", "1M", "All"] as ChartRange[]).map((o) => (
+            <button
+              key={o}
+              type="button"
+              role="radio"
+              aria-checked={o === range}
+              onClick={() => { setRange(o); setHover(null); }}
+              className="rounded-full px-2.5 py-1 font-mono text-[11px] font-medium transition-colors focus-visible:outline-none"
+              style={o === range
+                ? { background: "var(--d-ink)", color: "var(--d-bg)" }
+                : { color: "var(--d-muted)" }}
+            >
+              {o}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Chart area */}
+      <div
+        className="relative touch-pan-y"
+        style={{ height }}
+        onPointerMove={onMove}
+        onPointerLeave={() => setHover(null)}
+        role="img"
+        aria-label={`Recovery chart, current value ${slice[idx]?.label ?? ""}`}
+      >
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" aria-hidden>
+          <defs>
+            <linearGradient id={uid} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity="0.26" />
+              <stop offset="100%" stopColor={color} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          {/* dashed grid */}
+          {[0.25, 0.5, 0.75].map((f) => (
+            <line key={f}
+              x1={padL} y1={padT + innerH - f * innerH}
+              x2={W - padR} y2={padT + innerH - f * innerH}
+              stroke="var(--d-border)" strokeWidth="1"
+              vectorEffect="non-scaling-stroke" strokeDasharray="1 5"
+            />
+          ))}
+          {/* area fill */}
+          <path d={area} fill={`url(#${uid})`} />
+          {/* smooth line */}
+          <path
+            key={range}
+            d={la}
+            fill="none"
+            stroke={color}
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+          {/* endpoint dot */}
+          <circle
+            cx={pts[pts.length - 1][0]}
+            cy={pts[pts.length - 1][1]}
+            r="4"
+            fill={color}
+            stroke="var(--d-surface)"
+            strokeWidth="2.5"
+            vectorEffect="non-scaling-stroke"
+          />
+          {/* x labels */}
+          {labelIdxs.map((li) => (
+            <text key={li}
+              x={pts[li][0]}
+              y={H - 8}
+              textAnchor={li === 0 ? "start" : li === slice.length - 1 ? "end" : "middle"}
+              fontSize="10"
+              fill="var(--d-faint)"
+              fontFamily="var(--font-num)"
+            >
+              {slice[li].label}
+            </text>
+          ))}
+        </svg>
+
+        {/* hover crosshair */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 w-px -translate-x-1/2"
+          style={{
+            left: `${(pts[idx][0] / W) * 100}%`,
+            background: "var(--d-border-strong)",
+            opacity: hover !== null ? 1 : 0,
+            transition: "opacity 150ms ease",
+          }}
+        />
+        {/* hover dot */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px]"
+          style={{
+            left: `${(pts[idx][0] / W) * 100}%`,
+            top: `${(pts[idx][1] / H) * 100}%`,
+            background: color,
+            borderColor: "var(--d-surface)",
+            opacity: hover !== null ? 1 : 0,
+            transition: "opacity 150ms ease",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Horizontal segmented allocation bar — pattern from AllocationTile in the bento reference.
+ */
+export function SegmentBar({
+  segments,
+  colors,
+}: {
+  segments: { label: string; value: number }[];
+  colors: string[];
+}) {
+  const [hover, setHover] = useState<number | null>(null);
+  const total = segments.reduce((s, x) => s + x.value, 0) || 1;
+
+  return (
+    <div>
+      <div
+        className="flex h-8 gap-1"
+        onPointerLeave={() => setHover(null)}
+        role="img"
+        aria-label="Allocation breakdown"
+      >
+        {segments.map((s, i) => (
+          <div
+            key={s.label}
+            onPointerEnter={() => setHover(i)}
+            className="rounded-[8px] transition-opacity duration-200"
+            style={{
+              flexBasis: `${(s.value / total) * 100}%`,
+              background: colors[i % colors.length],
+              opacity: hover === null || hover === i ? 1 : 0.28,
+            }}
+            aria-label={`${s.label}: ${((s.value / total) * 100).toFixed(1)}%`}
+          />
+        ))}
+      </div>
+      <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
+        {segments.map((s, i) => (
+          <li key={s.label}
+            className="flex items-center justify-between gap-2 text-[12px]"
+            onPointerEnter={() => setHover(i)}
+            onPointerLeave={() => setHover(null)}
           >
-            {d.label}
-          </text>
-        ) : null
-      )}
-    </svg>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full" style={{ background: colors[i % colors.length] }} aria-hidden />
+              <span style={{ color: "var(--d-muted)" }}>{s.label}</span>
+            </span>
+            <span className="d-num" style={{ color: "var(--d-ink)" }}>
+              {((s.value / total) * 100).toFixed(1)}%
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -217,8 +384,11 @@ export function Gauge({
   );
 }
 
-/** Decreasing horizontal funnel — the overview centrepiece. Bars fill on load,
- * staggered, and each stage carries its count plus (where known) its rupee value. */
+/**
+ * Funnel stages rendered as activity-style list rows — icon chip, label,
+ * animated fill bar, count badge and optional rupee amount.
+ * Row pattern from ActivityTile in the bento design reference.
+ */
 export function FunnelBars({
   stages,
 }: {
@@ -226,28 +396,52 @@ export function FunnelBars({
 }) {
   const max = Math.max(...stages.map((s) => s.value)) || 1;
   return (
-    <div className="space-y-3">
+    <div className="-mx-2 space-y-1">
       {stages.map((s, i) => (
-        <div key={s.label} className="flex items-center gap-3">
-          <span className="w-24 shrink-0 text-[12.5px]" style={{ color: "var(--d-muted)" }}>
-            {s.label}
-          </span>
-          <div className="relative h-9 flex-1 overflow-hidden rounded-lg" style={{ background: "var(--d-surface-2)" }}>
-            <motion.div
-              className="flex h-full items-center rounded-lg pl-3 text-white"
-              style={{ background: s.color }}
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.max((s.value / max) * 100, 9)}%` }}
-              transition={{ duration: 0.7, delay: 0.1 + i * 0.09, ease: [0.22, 1, 0.36, 1] }}
-            >
-              <span className="d-num text-[13px] font-semibold">{s.value}</span>
-            </motion.div>
-          </div>
+        <div
+          key={s.label}
+          className="flex items-center gap-3 rounded-2xl px-2 py-2.5 transition-colors"
+          style={{ ["--hover-bg" as string]: "var(--d-surface-2)" }}
+          onPointerEnter={(e) => (e.currentTarget.style.background = "var(--d-surface-2)")}
+          onPointerLeave={(e) => (e.currentTarget.style.background = "")}
+        >
+          {/* Colour-coded icon chip */}
           <span
-            className="d-num w-20 shrink-0 text-right text-[12px]"
-            style={{ color: "var(--d-muted)" }}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white"
+            style={{ background: `color-mix(in oklch, ${s.color} 18%, var(--d-surface-2))`, color: s.color }}
+            aria-hidden
           >
-            {s.amount ?? ""}
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M22 12H2M2 12l6-6M2 12l6 6" />
+            </svg>
+          </span>
+
+          {/* Label + bar */}
+          <div className="min-w-0 flex-1">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[13px] font-medium" style={{ color: "var(--d-ink)" }}>{s.label}</span>
+              <span className="d-num text-[12px]" style={{ color: "var(--d-muted)" }}>{s.amount ?? ""}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full" style={{ background: "var(--d-surface-2)" }}>
+              <motion.div
+                className="h-full rounded-full"
+                style={{ background: s.color }}
+                initial={{ width: 0 }}
+                animate={{ width: `${Math.max((s.value / max) * 100, 4)}%` }}
+                transition={{ duration: 0.75, delay: 0.08 + i * 0.08, ease: [0.22, 1, 0.36, 1] }}
+              />
+            </div>
+          </div>
+
+          {/* Count badge */}
+          <span
+            className="d-num shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+            style={{
+              background: `color-mix(in oklch, ${s.color} 14%, var(--d-surface-2))`,
+              color: s.color,
+            }}
+          >
+            {s.value}
           </span>
         </div>
       ))}
@@ -255,7 +449,10 @@ export function FunnelBars({
   );
 }
 
-/** Labeled horizontal bars (e.g. recovered by class, stopping rules). */
+/**
+ * Activity-style list — icon chip, label, display value, sub text, inline fill bar.
+ * Pattern from ActivityTile in the bento design reference.
+ */
 export function HBarList({
   rows,
 }: {
@@ -263,23 +460,39 @@ export function HBarList({
 }) {
   const max = Math.max(...rows.map((r) => r.value)) || 1;
   return (
-    <div className="space-y-3">
+    <div className="-mx-2 space-y-0.5">
       {rows.map((r) => (
-        <div key={r.label}>
-          <div className="mb-1 flex items-baseline justify-between text-[12px]">
-            <span className="font-medium" style={{ color: "var(--d-ink)" }}>
-              {r.label}
-            </span>
-            <span className="d-num" style={{ color: "var(--d-muted)" }}>
-              {r.display ?? r.value}
-              {r.sub ? <span style={{ color: "var(--d-faint)" }}> · {r.sub}</span> : null}
-            </span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full" style={{ background: "var(--d-surface-2)" }}>
-            <div
-              className="h-full rounded-full transition-all"
-              style={{ width: `${Math.max((r.value / max) * 100, 3)}%`, background: r.color }}
-            />
+        <div
+          key={r.label}
+          className="flex items-center gap-3 rounded-2xl px-2 py-2.5 transition-colors"
+          onPointerEnter={(e) => (e.currentTarget.style.background = "var(--d-surface-2)")}
+          onPointerLeave={(e) => (e.currentTarget.style.background = "")}
+        >
+          {/* icon chip */}
+          <span
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[11px] font-bold"
+            style={{ background: `color-mix(in oklch, ${r.color} 18%, var(--d-surface-2))`, color: r.color }}
+            aria-hidden
+          >
+            {r.label.slice(0, 2).toUpperCase()}
+          </span>
+          {/* bar track */}
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex items-baseline justify-between">
+              <span className="truncate text-[13px] font-medium" style={{ color: "var(--d-ink)" }}>
+                {r.label}
+              </span>
+              <span className="d-num ml-2 shrink-0 text-[12px]" style={{ color: "var(--d-muted)" }}>
+                {r.display ?? r.value}
+                {r.sub ? <span style={{ color: "var(--d-faint)" }}> · {r.sub}</span> : null}
+              </span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full" style={{ background: "var(--d-surface-2)" }}>
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${Math.max((r.value / max) * 100, 3)}%`, background: r.color }}
+              />
+            </div>
           </div>
         </div>
       ))}

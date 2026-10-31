@@ -26,11 +26,13 @@ export function CardHeader({
   right?: ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3">
+    <div className="mb-4 flex items-center justify-between gap-3 px-5 pt-5">
       <div>
-        <h3 className="text-[13px] font-semibold tracking-tight">{title}</h3>
+        <h3 className="text-[13px] font-medium" style={{ color: "var(--d-muted)" }}>
+          {title}
+        </h3>
         {subtitle ? (
-          <p className="mt-0.5 text-[11.5px]" style={{ color: "var(--d-muted)" }}>
+          <p className="mt-0.5 text-[11px]" style={{ color: "var(--d-faint)" }}>
             {subtitle}
           </p>
         ) : null}
@@ -49,10 +51,9 @@ export function Chip({
 }) {
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium"
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-[11px] font-semibold"
       style={{ background: tone.soft, color: tone.fg }}
     >
-      <span className="h-1.5 w-1.5 rounded-full" style={{ background: tone.fg }} />
       {children}
     </span>
   );

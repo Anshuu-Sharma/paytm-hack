@@ -269,8 +269,8 @@ def list_calls(transaction_id: str, db: Session = Depends(get_db)) -> dict:
 def start_call(transaction_id: str, db: Session = Depends(get_db)) -> dict:
     """Start a simulated AI-voice-agent call for a transaction.
 
-    A live provider (Vapi / ElevenLabs / LiveKit) replaces the transcript source
-    later; the response shape stays the same, so the call UI is provider-agnostic.
+    A live provider (Sarvam AI) replaces the transcript source in live calls;
+    the response shape stays the same, so the call UI is provider-agnostic.
     """
     txn = _require_txn(db, transaction_id)
     meta = txn.metadata_json or {}

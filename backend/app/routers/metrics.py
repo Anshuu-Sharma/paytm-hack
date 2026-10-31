@@ -16,8 +16,12 @@ from app.services.reconciliation import compute_metrics
 router = APIRouter(tags=["metrics"])
 
 
-@router.get("/metrics")
+@router.get("/dashboard-summary")
 def get_metrics(db: Session = Depends(get_db)) -> dict:
+    # Deliberately not named "/metrics" or "/analytics" — ad/tracker
+    # blocklists (uBlock, EasyList, etc.) filter requests to those paths by
+    # default, which would silently 403/block this for any judge or operator
+    # running a blocker. This is the dashboard's single most-loaded endpoint.
     return compute_metrics(db)
 
 

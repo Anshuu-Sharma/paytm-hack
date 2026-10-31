@@ -19,18 +19,32 @@ from typing import Callable
 
 from sqlalchemy.orm import Session
 
-from app.enums import TransactionLifecycleState
-from app.models import TransactionState
+from app.enums import EscalationStatus, TransactionLifecycleState
+from app.models import EscalationQueue, TransactionState
 from app.services.reconciliation import compute_metrics
 
 logger = logging.getLogger(__name__)
 
 GenerateFn = Callable[[str], str]
 
-# Intents the assistant can act on. "answer" carries no action.
-_INTENTS = {"run_recovery", "set_status", "add_note", "navigate", "answer"}
+# Intents the assistant can act on. "answer" carries no action. Each of these
+# is a real capability that already exists as a button/form elsewhere in the
+# dashboard — REX just gives the operator a conversational front door to it.
+# Deliberately NOT exposed: editing policy rules (the Policy Inspector is
+# explicitly operator-only, by design — "REX can never change these") and
+# reseeding the whole demo dataset (destructive + slow; stays behind its own
+# topbar button with its own loading state).
+_INTENTS = {
+    "run_recovery", "set_status", "add_note", "navigate",
+    "resolve_escalation", "create_payment_link", "draft_message", "send_message",
+    "simulate_case", "call_customer", "start_campaign",
+    "answer",
+}
 
-# Only a status change is irreversible enough to confirm first.
+# Only a status change is irreversible enough to confirm first. Everything
+# else here mirrors a one-click button that already exists elsewhere in the
+# UI (send payment link, resolve ticket, simulate a case, etc.) — the
+# operator's own chat message is the deliberate action, same as that click.
 _CONFIRM_INTENTS = {"set_status"}
 
 _STATUSES = {s.value for s in TransactionLifecycleState}
@@ -43,6 +57,12 @@ _ROUTE_PATHS = {
     "audit": "/mission-control/audit",
     "compliance": "/mission-control/compliance",
     "policy": "/mission-control/policy",
+    "winback": "/mission-control/winback",
+    "whatsapp": "/mission-control/whatsapp",
+    "call_customer": "/mission-control/call-customer",
+    "customers": "/mission-control/customers",
+    "dsr": "/mission-control/dsr",
+    "dsr_reconciliation": "/mission-control/dsr/reconciliation",
 }
 _CLASS_ROUTE = re.compile(r"^class:([1-4])$")
 
@@ -70,6 +90,12 @@ _NAV_WORDS = {
     "audit": "audit",
     "compliance": "compliance", "stopping rule": "compliance",
     "policy": "policy",
+    "win-back": "winback", "winback": "winback", "win back": "winback",
+    "whatsapp": "whatsapp",
+    "call customer": "call_customer", "call a customer": "call_customer",
+    "customer": "customers",
+    "dsr reconciliation": "dsr_reconciliation", "reconciliation": "dsr_reconciliation",
+    "dsr": "dsr",
 }
 _CLASS_KEYWORDS = {
     1: ("failed payment", "payment failure", "class 1"),
@@ -248,17 +274,47 @@ _INTENT_GUIDE = (
     "cancel, fail). Set transaction_ref and status. Phrase 'reply' as a PROPOSAL awaiting the "
     "operator's confirmation (e.g. \"I'll escalate this — confirm?\"), never as already done.\n"
     "- add_note: the operator wants to attach a note. Set transaction_ref and note.\n"
-    "- navigate: the operator wants to open/show/go to a view. Set route. If they also ask "
-    "for a specific outcome (e.g. 'recovered failed payments', 'escalated invoices', "
-    "'pending / recoverable / not-yet-worked payments'), set status to that outcome as well — "
-    "it becomes a filter on the table. Pending cases are the ones REX can still recover.\n"
+    "- navigate: the operator wants to open/show/go to a view (including 'open the call customer "
+    "page'). Set route. If they also ask for a specific outcome (e.g. 'recovered failed payments', "
+    "'escalated invoices', 'pending / recoverable / not-yet-worked payments'), set status to that "
+    "outcome as well — it becomes a filter on the table. Pending cases are the ones REX can still "
+    "recover.\n"
+    "- resolve_escalation: the operator wants an escalation ticket closed/resolved for a case. "
+    "Set transaction_ref.\n"
+    "- create_payment_link: the operator wants a fresh payment link generated for a case. Set "
+    "transaction_ref.\n"
+    "- draft_message: the operator wants to SEE a drafted WhatsApp message without sending it "
+    "('draft a reminder for X', 'what would you say to X'). Set transaction_ref and prompt (what "
+    "the message should cover, in the operator's own words).\n"
+    "- send_message: the operator wants a WhatsApp message actually sent now ('tell X...', 'message "
+    "X that...', 'remind X to pay', 'send X a nudge'). Set transaction_ref and prompt (what to say). "
+    "If they give exact wording in quotes, put that exact wording in prompt.\n"
+    "- simulate_case: the operator wants a new simulated at-risk case created, for a demo ('simulate "
+    "a failure', 'create a test overdue invoice'). Set failure_class if a category is named "
+    "(1=Failed Payments, 2=Abandoned Checkouts, 3=Failed Subscriptions, 4=Overdue Invoices), else "
+    "leave it null for a random one.\n"
+    "- call_customer: the operator wants REX to actually place a simulated voice call to a named "
+    "customer right now ('call Mohan about his late payment', 'ring up Priya and ask about her "
+    "subscription') — this is different from navigate's call_customer route, which only opens the "
+    "picker page. Set customer_name (as best you can tell from the message) and call_reason (why "
+    "you're calling, in a short phrase).\n"
+    "- start_campaign: the operator wants REX to CREATE, DRAFT, or SEND a WhatsApp broadcast "
+    "campaign ('send a Diwali greeting to all customers', 'create a win-back campaign', 'draft a "
+    "promo for VIP customers') — this is different from navigate's whatsapp route, which only opens "
+    "the page to look at it. Set prompt to what they want to send, in their own words (REX will "
+    "draft a template and keep asking about discounts/audience/confirmation from here).\n"
 )
 
 _ROUTE_GUIDE = (
-    "route is one of: overview, transactions, escalations, audit, compliance, policy — "
-    "or class:N for one payment category, where "
-    "1=Failed Payments, 2=Abandoned Checkouts, 3=Failed Subscriptions/Mandates, "
+    "route is one of: overview, transactions, escalations, audit, compliance, policy, winback, "
+    "whatsapp, call_customer, customers, dsr, dsr_reconciliation — or class:N for one payment "
+    "category, where 1=Failed Payments, 2=Abandoned Checkouts, 3=Failed Subscriptions/Mandates, "
     "4=Overdue Invoices (B2B receivables). "
+    "winback = the Customer Win-Back page (dormancy/re-engagement offers). "
+    "whatsapp = the WhatsApp Campaigns page (broadcast templates, including the voice-drafted "
+    "campaign flow). call_customer = the Call Customer page (pick a customer + reason, REX places "
+    "a simulated voice call). customers = the Customers directory (profiles, spend, payment "
+    "history). dsr = the DSR Sheet. dsr_reconciliation = the DSR Reconciliation page. "
     "When the operator names a category (e.g. 'overdue invoices', 'failed subscriptions', "
     "'abandoned checkouts', 'failed payments'), you MUST use the matching class:N, not "
     "'transactions'. Use 'transactions' only for the unfiltered list."
@@ -273,13 +329,20 @@ _REF_GUIDE = (
 
 _SCHEMA_HINT = (
     'Return ONLY minified JSON with these keys: '
-    '{"intent": one of ["run_recovery","set_status","add_note","navigate","answer"], '
+    '{"intent": one of ["run_recovery","set_status","add_note","navigate","resolve_escalation",'
+    '"create_payment_link","draft_message","send_message","simulate_case","call_customer",'
+    '"start_campaign","answer"], '
     '"transaction_ref": string|null, '
     '"status": one of ["PENDING","DIAGNOSING","INTERVENING","WAITING","RECOVERED","ESCALATED",'
     '"CANCELLED","FAILED"]|null (PENDING = the not-yet-worked / recoverable queue), '
     '"note": string|null, '
     '"route": string|null, '
     '"scope": one of ["one","batch"]|null (only for run_recovery), '
+    '"prompt": string|null (what to draft/send/create — for draft_message, send_message and '
+    'start_campaign), '
+    '"failure_class": integer|null (1-4, for simulate_case only), '
+    '"customer_name": string|null (for call_customer only), '
+    '"call_reason": string|null (for call_customer only), '
     '"reply": a short natural-language reply in the operator\'s language}. '
     "No prose outside the JSON."
 )
@@ -296,6 +359,12 @@ _PAGE_NAMES = {
     "/mission-control/audit": "Audit Log",
     "/mission-control/compliance": "Stopping Rules",
     "/mission-control/policy": "Policy Inspector",
+    "/mission-control/winback": "Customer Win-Back",
+    "/mission-control/whatsapp": "WhatsApp Campaigns",
+    "/mission-control/call-customer": "Call Customer",
+    "/mission-control/customers": "Customers",
+    "/mission-control/dsr": "DSR Sheet",
+    "/mission-control/dsr/reconciliation": "DSR Reconciliation",
 }
 
 
@@ -375,6 +444,52 @@ def _fallback_parse(message: str, db: Session, context: dict, locale: str) -> di
     text = message.lower().strip()
     question = _is_question(text)
 
+    # These all have a keyword that the later, broader checks would otherwise
+    # swallow ("resolve"/"escalat" → set_status, "send"/"call" → navigate-ish
+    # words), so they're checked first.
+    if not question and re.search(r"\bcall\b", text):
+        m = re.search(r"\bcall\s+(?:up\s+)?([a-z]+)", text)
+        name = m.group(1) if m else ""
+        reason_m = re.search(r"\b(?:about|regarding|re:?|for)\s+(.+)$", text)
+        reason = reason_m.group(1).strip() if reason_m else ""
+        if name:
+            return {"intent": "call_customer", "customer_name": name, "call_reason": reason,
+                    "reply": _reply_for("call_customer", locale)}
+
+    if not question and (
+        "campaign" in text or "broadcast" in text
+        or ("send" in text and any(w in text for w in ("all customers", "everyone", "customers")))
+    ):
+        return {"intent": "start_campaign", "prompt": message, "reply": _reply_for("start_campaign", locale)}
+
+    if "escalation" in text and any(w in text for w in ("resolve", "close", "clear")):
+        return {"intent": "resolve_escalation", "transaction_ref": _ref_from_text(text, context),
+                "reply": _reply_for("resolve_escalation", locale)}
+
+    if not question and ("payment link" in text or "pay link" in text):
+        return {"intent": "create_payment_link", "transaction_ref": _ref_from_text(text, context),
+                "reply": _reply_for("create_payment_link", locale)}
+
+    if not question and "simulat" in text:
+        failure_class = None
+        for cid, words in _CLASS_KEYWORDS.items():
+            if any(w in text for w in words):
+                failure_class = cid
+                break
+        return {"intent": "simulate_case", "failure_class": failure_class,
+                "reply": _reply_for("simulate_case", locale)}
+
+    if not question and any(w in text for w in ("draft a message", "draft a reminder", "write a message", "draft")):
+        return {"intent": "draft_message", "transaction_ref": _ref_from_text(text, context),
+                "prompt": message, "reply": _reply_for("draft_message", locale)}
+
+    if not question and (
+        any(w in text for w in ("send a message", "send a nudge", "message him", "message her", "remind ", "nudge "))
+        or re.search(r"\btell\s+\w", text)
+    ):
+        return {"intent": "send_message", "transaction_ref": _ref_from_text(text, context),
+                "prompt": message, "reply": _reply_for("send_message", locale)}
+
     # A status change wins over "recover" so "mark this recovered" isn't a run.
     if any(w in text for w in ("mark", "set ", "escalat", "cancel", "resolve")) or text.startswith("set"):
         status = next((v for k, v in _STATUS_WORDS.items() if k in text), "RECOVERED")
@@ -413,7 +528,11 @@ def _ref_from_text(text: str, context: dict) -> str | None:
         if re.search(rf"\b{re.escape(w)}\b", text):
             return "this"
     # crude name pick: a capitalized-ish token the resolver can match on
-    m = re.search(r"\b(?:recover|handle|chase|fix|escalate|mark|for)\s+(?:the\s+)?([a-z][a-z0-9]+)", text)
+    m = re.search(
+        r"\b(?:recover|handle|chase|fix|escalate|mark|for|tell|send|message|remind|nudge)\s+"
+        r"(?:the\s+|a\s+|an\s+)?([a-z][a-z0-9]+)",
+        text,
+    )
     return m.group(1) if m else None
 
 
@@ -456,6 +575,20 @@ def _reply_for(intent: str, locale: str, *, status: str | None = None) -> str:
         return "नोट जोड़ दिया।" if hi else "Noted."
     if intent == "navigate":
         return "खोल रहा हूँ…" if hi else "Opening that view…"
+    if intent == "resolve_escalation":
+        return "एस्केलेशन हल कर दिया।" if hi else "Escalation resolved."
+    if intent == "create_payment_link":
+        return "पेमेंट लिंक बना रहा हूँ…" if hi else "Generating a payment link…"
+    if intent == "draft_message":
+        return "ड्राफ्ट तैयार कर रहा हूँ…" if hi else "Drafting that…"
+    if intent == "send_message":
+        return "भेज रहा हूँ…" if hi else "Sending that now…"
+    if intent == "simulate_case":
+        return "एक नया केस बना रहा हूँ…" if hi else "Creating a simulated case…"
+    if intent == "call_customer":
+        return "कॉल शुरू कर रहा हूँ…" if hi else "Starting that call…"
+    if intent == "start_campaign":
+        return "कैंपेन बना रहा हूँ…" if hi else "Drafting that campaign…"
     return "" if hi else ""
 
 
@@ -522,7 +655,48 @@ def _build(db: Session, parsed: dict, context: dict, locale: str) -> dict:
                            "transaction_ids": None, "status": None, "note": None, "route": None,
                            "requires_confirmation": True}}
 
-    # set_status / add_note act on a specific transaction.
+    if intent == "simulate_case":
+        fc = parsed.get("failure_class")
+        failure_class = int(fc) if isinstance(fc, (int, str)) and str(fc) in {"1", "2", "3", "4"} else None
+        return {"reply": reply or _reply_for("simulate_case", locale),
+                "action": {"type": "simulate_case", "failure_class": failure_class,
+                           "transaction_id": None, "status": None, "note": None, "route": None,
+                           "requires_confirmation": False}}
+
+    if intent == "call_customer":
+        name = (parsed.get("customer_name") or "").strip()
+        if not name:
+            clarify = ("किसे कॉल करना है?" if locale == "hi" else "Who would you like REX to call?")
+            return {"reply": clarify, "action": None}
+        call_reason = (parsed.get("call_reason") or "").strip()
+        # Resolved against the frontend's own customer directory (it's dummy
+        # data with no backend record) — this just hands the name/reason over.
+        return {"reply": reply or _reply_for("call_customer", locale),
+                "action": {"type": "call_customer", "customer_name": name, "call_reason": call_reason,
+                           "transaction_id": None, "status": None, "note": None, "route": None,
+                           "requires_confirmation": False}}
+
+    if intent == "start_campaign":
+        prompt = (parsed.get("prompt") or "").strip()
+        if not prompt:
+            clarify = ("क्या भेजना है?" if locale == "hi" else "What would you like REX to send?")
+            return {"reply": clarify, "action": None}
+        from app.services.campaign_drafting import draft_campaign
+
+        draft = draft_campaign(prompt, history=[], template=None, audience=None, locale=locale)
+        turn_history = [
+            {"role": "user", "text": prompt},
+            {"role": "rex", "text": draft["reply_text"]},
+        ]
+        # The campaign conversation is driven entirely by draft_campaign's own
+        # reply (it owns this turn), not the general-assistant 'reply' field.
+        return {"reply": draft["reply_text"],
+                "action": {"type": "start_campaign", "template": draft["template"],
+                           "audience": draft.get("audience"), "ready_to_send": draft.get("ready_to_send", False),
+                           "history": turn_history, "transaction_id": None, "status": None,
+                           "note": None, "route": None, "requires_confirmation": False}}
+
+    # Every remaining intent acts on one specific transaction.
     txn_id = resolve_transaction(db, parsed.get("transaction_ref"), context)
     if not txn_id:
         clarify = ("किस ट्रांज़ैक्शन के लिए? नाम या आईडी बताइए।" if locale == "hi"
@@ -537,7 +711,36 @@ def _build(db: Session, parsed: dict, context: dict, locale: str) -> dict:
                 "action": {"type": "set_status", "transaction_id": txn_id, "status": status,
                            "note": None, "route": None, "requires_confirmation": True}}
 
-    # add_note (run_recovery and set_status handled above)
+    if intent == "resolve_escalation":
+        ticket = (
+            db.query(EscalationQueue)
+            .filter_by(transaction_id=txn_id, status=EscalationStatus.OPEN)
+            .order_by(EscalationQueue.created_at.desc())
+            .first()
+        )
+        if not ticket:
+            msg = ("इस केस के लिए कोई खुला एस्केलेशन नहीं है।" if locale == "hi"
+                   else "There's no open escalation for that case.")
+            return {"reply": msg, "action": None}
+        return {"reply": reply or _reply_for("resolve_escalation", locale),
+                "action": {"type": "resolve_escalation", "transaction_id": txn_id,
+                           "escalation_id": ticket.id, "status": None, "note": None, "route": None,
+                           "requires_confirmation": False}}
+
+    if intent == "create_payment_link":
+        return {"reply": reply or _reply_for("create_payment_link", locale),
+                "action": {"type": "create_payment_link", "transaction_id": txn_id,
+                           "status": None, "note": None, "route": None,
+                           "requires_confirmation": False}}
+
+    if intent in ("draft_message", "send_message"):
+        prompt = (parsed.get("prompt") or "").strip()
+        return {"reply": reply or _reply_for(intent, locale),
+                "action": {"type": intent, "transaction_id": txn_id, "prompt": prompt,
+                           "status": None, "note": None, "route": None,
+                           "requires_confirmation": False}}
+
+    # add_note (everything else handled above)
     note = (parsed.get("note") or "").strip()
     return {"reply": reply or _reply_for("add_note", locale),
             "action": {"type": "add_note", "transaction_id": txn_id, "note": note,

@@ -89,7 +89,7 @@ def build_call(
 
     Used by the on-demand "Call" action so any transaction can be called, not
     only the seeded ones. The transcript is what the simulated agent would say;
-    a live provider (Vapi / ElevenLabs / LiveKit) replaces this later.
+    live calls use the Sarvam AI voice pipeline.
     """
     rupees = f"₹{int(amount_inr):,}"
     greet = persona["greet"]

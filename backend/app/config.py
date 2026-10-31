@@ -33,12 +33,30 @@ class Settings(BaseSettings):
     # is unavailable, so an unknown name never breaks the demo.
     gemini_draft_model: str = "gemini-flash-lite-latest"
 
-    # ElevenLabs — human voice for the REX assistant's spoken replies. An empty
-    # key makes the /assistant/tts endpoint return no audio, so the frontend
-    # falls back to the browser's built-in voice; add a key to upgrade.
-    elevenlabs_api_key: str = ""
-    elevenlabs_voice_id: str = "EXAVITQu4vr4xnSDxMaL"  # Sarah (premade, free-tier OK)
-    elevenlabs_model: str = "eleven_multilingual_v2"
+    # Sarvam AI — Indian-language voice stack (TTS + STT). When the key is absent
+    # the /assistant/tts endpoint returns no audio (browser voice fallback) and
+    # the /assistant/stt endpoint returns an error. The live voice-call pipeline
+    # also requires this key to connect to Sarvam WebSocket endpoints.
+    #
+    # TTS: Bulbul v4-flash — 200+ Indian-language persona voices, low latency.
+    # STT: Saaras v4 — 22+ Indian languages + codemix (Hinglish) support.
+    sarvam_api_key: str = ""
+    # bulbul:v4-flash speaker IDs use <persona>_<lang>_<style> format.
+    # amit_hi_conversational is a soft-spoken, warm conversational agent for Hindi.
+    sarvam_tts_speaker: str = "amit_hi_conversational"
+    sarvam_tts_model: str = "bulbul:v4-flash"
+    sarvam_tts_language: str = "hi-IN"
+    sarvam_stt_model: str = "saaras:v4"
+
+    # Sarvam Voice Agents — Instant Outbound API (real PSTN calls, separate
+    # product from the STT/TTS pair above). All five values come from the
+    # Sarvam dashboard: Voice Agents > your app > Deploy. Call is a no-op
+    # (raises) until all are set.
+    sarvam_org_id: str = ""
+    sarvam_workspace_id: str = ""
+    sarvam_outbound_app_id: str = ""
+    sarvam_outbound_connection_id: str = ""
+    sarvam_outbound_agent_phone_number: str = ""
 
     # When false, channel adapters simulate dispatch instead of making real
     # outbound calls. Kept off by default so the batch harness never spams.
@@ -52,9 +70,6 @@ class Settings(BaseSettings):
     twilio_api_key_sid: str = ""
     twilio_api_key_secret: str = ""
     twilio_whatsapp_from: str = "whatsapp:+14155238886"  # Twilio sandbox default
-
-    # Vapi voice. Absent -> the voice adapter stays simulated even in live mode.
-    vapi_api_key: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

@@ -3,12 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { addNote, recoverBatch, setStatus } from "@/lib/dashboard/api";
+import {
+  addNote, recoverBatch, setStatus,
+  createPaymentLink, draftMessage, sendMessage, resolveEscalation, simulateCase,
+  continueCampaignChat,
+} from "@/lib/dashboard/api";
 import type { AssistantAction } from "@/lib/dashboard/api";
 import { inr } from "@/lib/dashboard/format";
 import { useDash, tVocab } from "@/lib/dashboard/i18n";
 import { useDashboardRefresh } from "@/lib/dashboard/refresh";
 import { useExplorerFilter } from "@/lib/dashboard/explorerFilter";
+import { CUSTOMERS } from "@/lib/dashboard/customers";
+import { finalizeCampaign, type CampaignDraftState } from "@/lib/dashboard/campaignStore";
 import type { LifecycleStatus } from "@/lib/dashboard/types";
 import { useSpeech } from "@/hooks/useSpeech";
 import type { FeedItem } from "@/hooks/useRecoveryRun";
@@ -29,9 +35,11 @@ interface Props {
   focusedId: string | null;
   open: boolean;
   setOpen: (b: boolean) => void;
+  campaign: CampaignDraftState | null;
+  setCampaign: (c: CampaignDraftState | null) => void;
 }
 
-export default function RexAssistant({ run, chat, focusedId, open, setOpen }: Props) {
+export default function RexAssistant({ run, chat, focusedId, open, setOpen, campaign, setCampaign }: Props) {
   const { d, locale } = useDash();
   const router = useRouter();
   const pathname = usePathname();
@@ -77,6 +85,76 @@ export default function RexAssistant({ run, chat, focusedId, open, setOpen }: Pr
           chat.push("rex", d.assistant.didNote);
         }
         return;
+      case "resolve_escalation":
+        if (action.escalation_id != null) {
+          await resolveEscalation(action.escalation_id);
+          refresh();
+          chat.push("rex", locale === "hi" ? "एस्केलेशन हल कर दिया।" : "Escalation resolved.");
+        }
+        return;
+      case "create_payment_link":
+        if (action.transaction_id) {
+          const res = await createPaymentLink(action.transaction_id);
+          refresh();
+          chat.push("rex", locale === "hi" ? `लिंक बन गया: ${res.url}` : `Payment link ready: ${res.url}`);
+        }
+        return;
+      case "draft_message":
+        if (action.transaction_id && action.prompt) {
+          const { draft } = await draftMessage(action.transaction_id, action.prompt);
+          chat.push("rex", draft);
+        }
+        return;
+      case "send_message":
+        if (action.transaction_id && action.prompt) {
+          const { draft } = await draftMessage(action.transaction_id, action.prompt);
+          await sendMessage(action.transaction_id, draft, true);
+          refresh();
+          chat.push("rex", (locale === "hi" ? "भेज दिया: " : "Sent: ") + draft);
+        }
+        return;
+      case "simulate_case":
+        {
+          const row = await simulateCase(action.failure_class ?? undefined);
+          refresh();
+          const name = row.customer_name ?? (locale === "hi" ? "एक ग्राहक" : "a customer");
+          chat.push("rex", locale === "hi" ? `${name} के लिए नया केस बना दिया।` : `Created a new case for ${name}.`);
+        }
+        return;
+      case "call_customer":
+        if (action.customer_name) {
+          const needle = action.customer_name.toLowerCase();
+          const match = CUSTOMERS.find((c) => c.name.toLowerCase().includes(needle));
+          if (match) {
+            const params = new URLSearchParams({ customer: match.id, reason: "custom" });
+            if (action.call_reason) params.set("custom", action.call_reason);
+            router.push(`/mission-control/call-customer/call?${params.toString()}`);
+          } else {
+            chat.push(
+              "rex",
+              locale === "hi"
+                ? `"${action.customer_name}" नाम का कोई ग्राहक नहीं मिला।`
+                : `I couldn't find a customer named "${action.customer_name}".`,
+            );
+          }
+        }
+        return;
+      case "start_campaign":
+        if (action.template) {
+          if (action.ready_to_send && action.audience) {
+            const saved = finalizeCampaign(action.template, action.audience, "chat");
+            chat.push(
+              "rex",
+              locale === "hi"
+                ? `"${saved.name}" ${saved.audienceCount} ग्राहकों को भेज दिया गया।`
+                : `Sent "${saved.name}" to ${saved.audienceCount} customers.`,
+            );
+          } else {
+            setCampaign({ template: action.template, audience: action.audience ?? null, history: action.history ?? [] });
+          }
+          router.push("/mission-control/whatsapp");
+        }
+        return;
     }
   };
 
@@ -89,6 +167,41 @@ export default function RexAssistant({ run, chat, focusedId, open, setOpen }: Pr
     const text = (spoken ?? input).trim();
     if (!text || chat.busy) return;
     setInput("");
+
+    // Mid-campaign: keep driving the draft → audience → confirm loop instead
+    // of routing back through the general assistant endpoint.
+    if (campaign) {
+      chat.push("user", text);
+      const nextHistory = [...campaign.history, { role: "user", text }];
+      try {
+        const data = await continueCampaignChat({
+          message: text, locale, history: nextHistory,
+          template: campaign.template, audience: campaign.audience,
+        });
+        chat.push("rex", data.reply_text);
+        if (voiceOn) speak(data.reply_text);
+        if (data.ready_to_send && data.audience) {
+          const saved = finalizeCampaign(data.template, data.audience, "chat");
+          chat.push(
+            "rex",
+            locale === "hi"
+              ? `"${saved.name}" ${saved.audienceCount} ग्राहकों को भेज दिया गया।`
+              : `Sent "${saved.name}" to ${saved.audienceCount} customers.`,
+          );
+          setCampaign(null);
+        } else {
+          setCampaign({
+            template: data.template,
+            audience: data.audience ?? campaign.audience,
+            history: [...nextHistory, { role: "rex", text: data.reply_text }],
+          });
+        }
+      } catch {
+        chat.push("rex", d.assistant.error);
+      }
+      return;
+    }
+
     const res = await chat.send(text, {
       focused_transaction_id: focusedId,
       route: pathname,
@@ -180,6 +293,10 @@ export default function RexAssistant({ run, chat, focusedId, open, setOpen }: Pr
 
   const runActive = run.phase !== "idle";
 
+  const onAskPage = pathname?.startsWith("/mission-control/ask");
+
+  if (onAskPage) return null;
+
   return (
     <>
       {/* Launcher */}
@@ -229,8 +346,10 @@ export default function RexAssistant({ run, chat, focusedId, open, setOpen }: Pr
               </span>
               <div className="min-w-0 leading-tight">
                 <div className="text-[13.5px] font-semibold tracking-tight">{d.assistant.title}</div>
-                <div className="truncate text-[11px]" style={{ color: "var(--d-muted)" }}>
-                  {d.assistant.subtitle}
+                <div className="truncate text-[11px]" style={{ color: campaign ? "var(--d-accent)" : "var(--d-muted)" }}>
+                  {campaign
+                    ? (locale === "hi" ? "📣 कैंपेन ड्राफ्ट कर रहा हूँ…" : "📣 Drafting your campaign…")
+                    : d.assistant.subtitle}
                 </div>
               </div>
               <div className="ml-auto flex items-center gap-1">
@@ -244,7 +363,7 @@ export default function RexAssistant({ run, chat, focusedId, open, setOpen }: Pr
                   {voiceOn ? "🔊" : "🔇"}
                 </button>
                 <button
-                  onClick={() => { chat.clear(); run.reset(); }}
+                  onClick={() => { chat.clear(); run.reset(); setCampaign(null); }}
                   className="rounded-md px-2 py-1 text-[11px] transition-colors hover:bg-[var(--d-surface-2)]"
                   style={{ color: "var(--d-muted)" }}
                 >

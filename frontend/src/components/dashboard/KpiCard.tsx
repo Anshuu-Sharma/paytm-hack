@@ -23,17 +23,14 @@ export default function KpiCard({
   countFormat?: (n: number) => string;
 }) {
   return (
-    <Card
-      className="flex flex-col justify-between p-4"
-      style={emphasis ? { boxShadow: `inset 3px 0 0 ${accent}, var(--d-shadow)` } : undefined}
-    >
-      <div className="flex items-start justify-between">
+    <Card className="flex min-h-[130px] flex-col justify-between p-5">
+      <div className="flex items-start justify-between gap-2">
         <span className="d-label">{label}</span>
         {spark && spark.length > 1 ? <Sparkline values={spark} color={accent} /> : null}
       </div>
-      <div className="mt-3">
+      <div>
         <div
-          className="d-num text-[26px] font-semibold leading-none tracking-tight"
+          className="d-num text-[28px] font-semibold leading-none tracking-[-0.03em]"
           style={{ color: emphasis ? accent : "var(--d-ink)" }}
         >
           {countTo != null && countFormat ? (
@@ -43,7 +40,7 @@ export default function KpiCard({
           )}
         </div>
         {sub ? (
-          <div className="mt-1.5 text-[12px]" style={{ color: "var(--d-muted)" }}>
+          <div className="mt-2 text-[11px] leading-snug" style={{ color: "var(--d-muted)" }}>
             {sub}
           </div>
         ) : null}

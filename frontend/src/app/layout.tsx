@@ -78,6 +78,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${playfair.variable} ${hanken.variable} ${firaCode.variable} ${fraunces.variable} ${geist.variable} ${geistMono.variable} ${tiroDeva.variable} ${mukta.variable}`}
     >
       <body className="min-h-screen bg-void text-fg">

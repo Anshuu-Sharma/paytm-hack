@@ -11,6 +11,8 @@ import type {
   TransactionList,
   TransactionRow,
 } from "./types";
+import type { CampaignTemplate } from "./campaignStore";
+import type { AudienceKey } from "./customers";
 
 const V1 = `${API_BASE}/api/v1`;
 
@@ -22,8 +24,10 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await res.json()) as T;
 }
 
+// Named "dashboard-summary", not "/metrics" — that path trips ad/tracker
+// blocklists (uBlock, EasyList, etc.) in some judges'/users' browsers.
 export const fetchMetrics = (signal?: AbortSignal) =>
-  getJson<Metrics>("/metrics", signal);
+  getJson<Metrics>("/dashboard-summary", signal);
 
 export interface TxnQuery {
   failure_class?: number;
@@ -210,7 +214,23 @@ export const addNote = (id: string, note: string) =>
 export const resolveEscalation = (ticketId: number) =>
   postJson<{ status: string }>(`/escalations/${ticketId}/resolve`, {});
 
-export type AssistantActionType = "run_recovery" | "set_status" | "add_note" | "navigate";
+export type AssistantActionType =
+  | "run_recovery"
+  | "set_status"
+  | "add_note"
+  | "navigate"
+  | "resolve_escalation"
+  | "create_payment_link"
+  | "draft_message"
+  | "send_message"
+  | "simulate_case"
+  | "call_customer"
+  | "start_campaign";
+
+export interface AssistantCampaignTurn {
+  role: string;
+  text: string;
+}
 
 export interface AssistantAction {
   type: AssistantActionType;
@@ -221,6 +241,15 @@ export interface AssistantAction {
   requires_confirmation: boolean;
   scope?: "one" | "batch" | null;
   transaction_ids?: string[] | null;
+  escalation_id?: number | null;
+  prompt?: string | null;
+  failure_class?: number | null;
+  customer_name?: string | null;
+  call_reason?: string | null;
+  template?: CampaignTemplate | null;
+  audience?: AudienceKey | null;
+  ready_to_send?: boolean;
+  history?: AssistantCampaignTurn[];
 }
 
 export interface AssistantReply {
@@ -241,6 +270,23 @@ export const sendAssistantChat = (
   locale: string,
   context: AssistantContext = {},
 ) => postJson<AssistantReply>("/assistant/chat", { message, locale, context });
+
+export interface CampaignChatReply {
+  reply_text: string;
+  template: CampaignTemplate;
+  audience: AudienceKey | null;
+  ready_to_send: boolean;
+}
+
+/** One turn of a campaign-drafting conversation, continued outside the voice
+ * page — used when "start_campaign" hands a chat session into campaign mode. */
+export const continueCampaignChat = (body: {
+  message: string;
+  locale: string;
+  history: AssistantCampaignTurn[];
+  template: CampaignTemplate | null;
+  audience: AudienceKey | null;
+}) => postJson<CampaignChatReply>("/assistant/campaign-chat", body);
 
 export interface RecoverBatchResult {
   total: number;

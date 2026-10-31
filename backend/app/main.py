@@ -11,9 +11,11 @@ from app.routers import (
     health,
     metrics,
     policy,
+    stt,
     stream,
     trackers,
     transactions,
+    voice_call,
     webhooks,
 )
 
@@ -51,6 +53,8 @@ app.include_router(transactions.router, prefix="/api/v1")
 app.include_router(policy.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(assistant.router, prefix="/api/v1")
+app.include_router(stt.router, prefix="/api/v1")
+app.include_router(voice_call.router, prefix="/api/v1")
 app.include_router(trackers.router, prefix="/api/v1")
 
 

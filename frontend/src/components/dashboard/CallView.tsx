@@ -2,13 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ConversationProvider, useConversation } from "@elevenlabs/react";
-import { createPaymentLink } from "@/lib/dashboard/api";
+import { API_BASE } from "@/lib/api";
 import { useDash } from "@/lib/dashboard/i18n";
-
-// Public agent, so the browser can start the session directly with just the ID
-// (no server-side signed URL). Configure in frontend/.env.local.
-const AGENT_ID = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
+import CrystalizedBall from "@/components/CrystalizedBall";
 
 type Turn = { speaker: "AGENT" | "USER"; text: string };
 
@@ -18,22 +14,76 @@ function mmss(s: number): string {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
-function Waveform({ active, color }: { active: boolean; color: string }) {
-  return (
-    <div className="flex items-end gap-[3px]" style={{ height: 18 }}>
-      {[0, 1, 2, 3, 4].map((i) => (
-        <motion.span
-          key={i}
-          style={{ width: 3, background: color, borderRadius: 2 }}
-          animate={active ? { height: [4, 16, 6, 14, 5][i] } : { height: 4 }}
-          transition={active ? { duration: 0.5, repeat: Infinity, repeatType: "reverse", delay: i * 0.08 } : {}}
-        />
-      ))}
-    </div>
-  );
+// Convert PCM Float32 audio samples to a standard 16kHz mono 16-bit WAV ArrayBuffer
+function encodeWav(samples: Float32Array, sampleRate: number = 16000): ArrayBuffer {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+
+  function writeString(offset: number, str: string) {
+    for (let i = 0; i < str.length; i++) {
+      view.setUint8(offset + i, str.charCodeAt(i));
+    }
+  }
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true); // SubChunk1Size (16 for PCM)
+  view.setUint16(20, 1, true); // AudioFormat (1 for PCM)
+  view.setUint16(22, 1, true); // NumChannels (1 for mono)
+  view.setUint32(24, sampleRate, true); // SampleRate
+  view.setUint32(28, sampleRate * 2, true); // ByteRate
+  view.setUint16(32, 2, true); // BlockAlign
+  view.setUint16(34, 16, true); // BitsPerSample
+  writeString(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+
+  return buffer;
 }
 
-function LiveCall({
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+}
+
+function playAudioBase64(base64Data: string, onPlay: () => void, onEnd: () => void) {
+  try {
+    const binaryString = window.atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const blob = new Blob([bytes.buffer], { type: "audio/mpeg" });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.onplay = onPlay;
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      onEnd();
+    };
+    audio.onerror = () => {
+      URL.revokeObjectURL(url);
+      onEnd();
+    };
+    audio.play().catch(() => onEnd());
+  } catch {
+    onEnd();
+  }
+}
+
+export default function CallView({
   txnId,
   customerName,
   onLinkSent,
@@ -48,10 +98,25 @@ function LiveCall({
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [ended, setEnded] = useState(false);
+  const [status, setStatus] = useState<"disconnected" | "connecting" | "connected">("disconnected");
+  const [speaking, setSpeaking] = useState(false);
+  const [userSpeaking, setUserSpeaking] = useState(false);
+  const [muted, setMuted] = useState(false);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const audioQueueRef = useRef<string[]>([]);
+  const isPlayingAudioRef = useRef(false);
+  const mutedRef = useRef(false);
+  const speakingRef = useRef(false);
 
-  const initial = (customerName || "?").charAt(0).toUpperCase();
+  mutedRef.current = muted;
+  speakingRef.current = speaking;
+
   const first = (customerName || "").split(" ")[0];
 
   const stopTimer = () => {
@@ -61,49 +126,87 @@ function LiveCall({
     }
   };
 
-  const conversation = useConversation({
-    onConnect: () => {
-      setError(null);
-      setElapsed(0);
-      stopTimer();
-      timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
-      // Give REX the case context so it can speak to this customer specifically.
-      try {
-        conversation.sendContextualUpdate(
-          `You are on a payment-recovery call with ${customerName}. Address them by name.`
-        );
-      } catch {
-        /* non-fatal */
+  const processAudioQueue = () => {
+    if (audioQueueRef.current.length === 0) {
+      isPlayingAudioRef.current = false;
+      setSpeaking(false);
+      return;
+    }
+    isPlayingAudioRef.current = true;
+    setSpeaking(true);
+    const nextChunk = audioQueueRef.current.shift()!;
+    playAudioBase64(
+      nextChunk,
+      () => setSpeaking(true),
+      () => {
+        processAudioQueue();
       }
-    },
-    onDisconnect: () => {
-      stopTimer();
-      setEnded(true);
-    },
-    onMessage: ({ source, message }) => {
-      const text = (message || "").trim();
-      if (!text) return;
-      setTurns((t) => [...t, { speaker: source === "ai" ? "AGENT" : "USER", text }]);
-    },
-    onError: (msg) => {
-      stopTimer();
-      setError(typeof msg === "string" ? msg : c.micDenied);
-    },
-  });
+    );
+  };
 
-  const status = conversation.status; // disconnected | connecting | connected | error
+  const enqueueAudio = (b64: string) => {
+    audioQueueRef.current.push(b64);
+    if (!isPlayingAudioRef.current) {
+      processAudioQueue();
+    }
+  };
 
-  // End the session and clear the timer if the panel unmounts mid-call.
+  const stopAudioCapture = () => {
+    if (processorRef.current) {
+      try {
+        processorRef.current.disconnect();
+      } catch {
+        /* ignore */
+      }
+      processorRef.current = null;
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+      try {
+        audioContextRef.current.close();
+      } catch {
+        /* ignore */
+      }
+      audioContextRef.current = null;
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+    }
+  };
+
+  const hangUp = () => {
+    stopTimer();
+    stopAudioCapture();
+    if (wsRef.current) {
+      try {
+        wsRef.current.send(JSON.stringify({ type: "hangup" }));
+        wsRef.current.close();
+      } catch {
+        /* ignore */
+      }
+      wsRef.current = null;
+    }
+    setStatus("disconnected");
+    setEnded(true);
+    setSpeaking(false);
+    setUserSpeaking(false);
+    audioQueueRef.current = [];
+    isPlayingAudioRef.current = false;
+  };
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopTimer();
-      try {
-        conversation.endSession();
-      } catch {
-        /* already closed */
+      stopAudioCapture();
+      if (wsRef.current) {
+        try {
+          wsRef.current.close();
+        } catch {
+          /* ignore */
+        }
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -111,63 +214,184 @@ function LiveCall({
     if (el) el.scrollTop = el.scrollHeight;
   }, [turns]);
 
-  const begin = () => {
-    if (!AGENT_ID) return;
+  const begin = async () => {
     setError(null);
     setTurns([]);
     setEnded(false);
+    setStatus("connecting");
+    setElapsed(0);
+    audioQueueRef.current = [];
+    isPlayingAudioRef.current = false;
+
+    // 1. Acquire mic permission
+    let stream: MediaStream;
     try {
-      conversation.startSession({
-        agentId: AGENT_ID,
-        connectionType: "webrtc",
-        // The agent's prompt/first message reference these placeholders.
-        dynamicVariables: {
-          customer_name: customerName || "customer",
-          company_name: "REX",
-        },
-        // REX can call this mid-conversation to mint a real Paytm link and
-        // drop it into the customer's WhatsApp thread.
-        clientTools: {
-          send_payment_link: async () => {
-            try {
-              const r = await createPaymentLink(txnId);
-              onLinkSent?.();
-              setTurns((t) => [...t, { speaker: "AGENT", text: `🔗 ${c.linkSent}` }]);
-              return r.simulated
-                ? "Payment link created and sent to the customer's WhatsApp."
-                : "Secure Paytm payment link sent to the customer's WhatsApp.";
-            } catch {
-              return "Could not send the payment link right now.";
-            }
-          },
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
         },
       });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : c.micDenied);
+      mediaStreamRef.current = stream;
+    } catch {
+      setError(c.micDenied);
+      setStatus("disconnected");
+      return;
     }
+
+    // 2. Open WebSocket to backend Sarvam Voice Agent
+    const wsBase = API_BASE.replace(/^http/, "ws");
+    const wsUrl = `${wsBase}/api/v1/voice-call/${encodeURIComponent(txnId)}`;
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      setStatus("connected");
+      stopTimer();
+      timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
+
+      // 3. Set up AudioContext with VAD & WAV Encoder for clean STT
+      try {
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const audioCtx = new AudioCtx({ sampleRate: 16000 });
+        audioContextRef.current = audioCtx;
+
+        const source = audioCtx.createMediaStreamSource(stream);
+        const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+        processorRef.current = processor;
+
+        let samplesBuffer: Float32Array[] = [];
+        let silenceCount = 0;
+        let isRecordingUtterance = false;
+
+        processor.onaudioprocess = (e) => {
+          if (mutedRef.current || wsRef.current?.readyState !== WebSocket.OPEN) {
+            return;
+          }
+
+          // Do not listen to mic while agent audio is playing to prevent self-echo
+          if (speakingRef.current || isPlayingAudioRef.current) {
+            return;
+          }
+
+          const inputData = e.inputBuffer.getChannelData(0);
+
+          // Calculate RMS volume level
+          let sum = 0;
+          for (let i = 0; i < inputData.length; i++) {
+            sum += inputData[i] * inputData[i];
+          }
+          const rms = Math.sqrt(sum / inputData.length);
+
+          const SPEECH_THRESHOLD = 0.018;
+
+          if (rms > SPEECH_THRESHOLD) {
+            // Speech detected
+            isRecordingUtterance = true;
+            silenceCount = 0;
+            setUserSpeaking(true);
+            samplesBuffer.push(new Float32Array(inputData));
+          } else if (isRecordingUtterance) {
+            // Silence following speech
+            samplesBuffer.push(new Float32Array(inputData));
+            silenceCount++;
+
+            // ~800ms of silence (each buffer is ~256ms at 16kHz)
+            if (silenceCount >= 3) {
+              setUserSpeaking(false);
+              isRecordingUtterance = false;
+              silenceCount = 0;
+
+              // Check if we captured at least 0.6s of speech
+              const totalSamples = samplesBuffer.reduce((acc, b) => acc + b.length, 0);
+              if (totalSamples >= 9600) {
+                const merged = new Float32Array(totalSamples);
+                let offset = 0;
+                for (const chunk of samplesBuffer) {
+                  merged.set(chunk, offset);
+                  offset += chunk.length;
+                }
+
+                // Encode to standard 16kHz mono WAV
+                const wavBuffer = encodeWav(merged, 16000);
+                const base64Wav = arrayBufferToBase64(wavBuffer);
+
+                if (wsRef.current?.readyState === WebSocket.OPEN) {
+                  wsRef.current.send(JSON.stringify({ type: "audio", data: base64Wav }));
+                }
+              }
+              samplesBuffer = [];
+            }
+          }
+        };
+
+        source.connect(processor);
+        processor.connect(audioCtx.destination);
+      } catch (err) {
+        console.warn("AudioContext setup error", err);
+      }
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "turn") {
+          setTurns((t) => [...t, { speaker: msg.speaker, text: msg.text }]);
+        } else if (msg.type === "audio_chunk") {
+          if (msg.data) {
+            enqueueAudio(msg.data);
+          }
+        } else if (msg.type === "link_sent") {
+          onLinkSent?.();
+          setTurns((t) => [...t, { speaker: "AGENT", text: `🔗 ${c.linkSent}` }]);
+        } else if (msg.type === "ended") {
+          hangUp();
+        } else if (msg.type === "error") {
+          setError(msg.message || "Call error occurred");
+        }
+      } catch {
+        /* invalid frame */
+      }
+    };
+
+    ws.onerror = () => {
+      setError("WebSocket connection failed");
+      hangUp();
+    };
+
+    ws.onclose = () => {
+      if (status === "connected" || status === "connecting") {
+        stopTimer();
+        stopAudioCapture();
+        setStatus("disconnected");
+        setEnded(true);
+      }
+    };
   };
 
-  const hangUp = () => {
-    stopTimer();
-    try {
-      conversation.endSession();
-    } catch {
-      /* already closed */
+  const toggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getAudioTracks().forEach((track) => {
+        track.enabled = !next;
+      });
     }
-    setEnded(true);
   };
 
   const connecting = status === "connecting";
   const connected = status === "connected";
   const live = connecting || connected;
-  const speaking = connected && conversation.isSpeaking;
 
   const statusLine = connecting
     ? c.connecting
     : connected
       ? speaking
         ? c.speaking
-        : c.listening
+        : userSpeaking
+          ? "Aap bol rahe hain..."
+          : c.listening
       : ended
         ? `${c.callEnded} · ${mmss(elapsed)}`
         : c.aiAgent;
@@ -175,24 +399,23 @@ function LiveCall({
   return (
     <div className="flex h-full flex-col" style={{ background: "#0b141a", color: "#e9edef" }}>
       {/* Caller identity */}
-      <div className="flex flex-col items-center" style={{ paddingTop: "16%" }}>
-        <div className="relative">
-          {live && (
-            <motion.span
-              className="absolute inset-0 rounded-full"
-              style={{ border: "2px solid #25d366" }}
-              animate={{ scale: [1, 1.5], opacity: [0.6, 0] }}
-              transition={{ duration: 1.4, repeat: Infinity }}
-            />
-          )}
-          <span
-            className="grid place-items-center rounded-full"
-            style={{ width: 58, height: 58, background: "#25d366", fontSize: 23, fontWeight: 700, color: "#0b141a" }}
-          >
-            {initial}
-          </span>
+      <div className="flex flex-col items-center" style={{ paddingTop: "10%" }}>
+        <div style={{ width: 150, height: 150 }}>
+          <CrystalizedBall
+            preset={speaking ? "aurora" : userSpeaking ? "frost" : "eclipse"}
+            color={speaking ? "#25d366" : userSpeaking ? "#38bdf8" : "#9fb3c8"}
+            size={0.85}
+            speed={speaking || userSpeaking ? 1.7 : 0.5}
+            glow={speaking ? 1.3 : userSpeaking ? 1.1 : 0.75}
+            crackle={speaking ? 0.9 : userSpeaking ? 0.65 : 0.4}
+            flares={speaking || userSpeaking ? 0.7 : 0.35}
+            sparks={speaking || userSpeaking ? 0.7 : 0.25}
+            haze={speaking || userSpeaking ? 0.9 : 0.7}
+            interactive={false}
+            paused={false}
+          />
         </div>
-        <div className="mt-2 flex items-center gap-1.5">
+        <div className="mt-1 flex items-center gap-1.5">
           <div style={{ fontSize: 14, fontWeight: 600 }}>{customerName}</div>
           {connected && (
             <span
@@ -212,11 +435,6 @@ function LiveCall({
           {statusLine}
           {connected && elapsed > 0 ? ` · ${mmss(elapsed)}` : ""}
         </div>
-        {live && (
-          <div className="mt-1.5 flex justify-center">
-            <Waveform active={speaking} color="#25d366" />
-          </div>
-        )}
       </div>
 
       {/* Transcript */}
@@ -260,24 +478,20 @@ function LiveCall({
 
       {/* Controls */}
       <div className="w-full px-4 pb-5 pt-2">
-        {!AGENT_ID ? (
-          <p className="text-center" style={{ fontSize: 10, opacity: 0.6 }}>
-            Set NEXT_PUBLIC_ELEVENLABS_AGENT_ID to enable live calling.
-          </p>
-        ) : live ? (
+        {live ? (
           <div className="flex items-center justify-center gap-3">
             <button
-              onClick={() => conversation.setMuted(!conversation.isMuted)}
+              onClick={toggleMute}
               className="grid place-items-center rounded-full"
               style={{
                 width: 40,
                 height: 40,
-                background: conversation.isMuted ? "#e11d48" : "rgba(255,255,255,0.12)",
+                background: muted ? "#e11d48" : "rgba(255,255,255,0.12)",
                 color: "#fff",
               }}
-              aria-label={conversation.isMuted ? c.unmute : c.mute}
+              aria-label={muted ? c.unmute : c.mute}
             >
-              {conversation.isMuted ? (
+              {muted ? (
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <line x1="2" y1="2" x2="22" y2="22" />
                   <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6" />
@@ -312,21 +526,5 @@ function LiveCall({
         )}
       </div>
     </div>
-  );
-}
-
-export default function CallView({
-  txnId,
-  customerName,
-  onLinkSent,
-}: {
-  txnId: string;
-  customerName: string;
-  onLinkSent?: () => void;
-}) {
-  return (
-    <ConversationProvider>
-      <LiveCall txnId={txnId} customerName={customerName} onLinkSent={onLinkSent} />
-    </ConversationProvider>
   );
 }

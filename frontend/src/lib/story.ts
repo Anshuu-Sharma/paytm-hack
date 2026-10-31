@@ -61,64 +61,60 @@ export const STORY: StoryBeat[] = [
     },
   },
   {
-    id: "class-1",
+    id: "reach",
     pose: "confused",
     lines: {
       en: [
-        "During a big launch, Meera tried to buy Rooh Pro — the bank's UPI switch timed out.",
-        "She did everything right… and now she thinks I charged her twice.",
+        "So I stopped trying to catch every leak myself.",
+        "REX doesn't just flag the problem — it reaches out. On WhatsApp, by phone, wherever the customer actually is.",
       ],
       hi: [
-        "एक बड़े लॉन्च के दौरान, मीरा ने Rooh Pro खरीदने की कोशिश की — बैंक का UPI स्विच टाइमआउट हो गया।",
-        "उसने सब कुछ सही किया… और अब उसे लगता है मैंने उससे दो बार पैसे ले लिए।",
+        "तो मैंने हर रिसाव को खुद पकड़ने की कोशिश छोड़ दी।",
+        "REX सिर्फ़ समस्या नहीं बताता — वह खुद संपर्क करता है। WhatsApp पर, फ़ोन पर, जहाँ भी ग्राहक असल में मौजूद हो।",
       ],
     },
-    classId: 1,
   },
   {
-    id: "class-2",
-    pose: "facepalm",
-    lines: {
-      en: [
-        "Another customer picked a plan, reached the OTP screen…",
-        "…switched apps to read the code, and the checkout was gone. High intent. Zero sale.",
-      ],
-      hi: [
-        "एक और ग्राहक ने प्लान चुना, OTP स्क्रीन तक पहुँचा…",
-        "…कोड पढ़ने के लिए ऐप बदला, और चेकआउट गायब। पूरा इरादा। बिक्री शून्य।",
-      ],
-    },
-    classId: 2,
-  },
-  {
-    id: "class-3",
+    id: "whatsapp-campaign",
     pose: "hips",
     lines: {
       en: [
-        "My subscribers' auto-debits fail at month-end — salary's not in yet.",
-        "I retry the next morning. Fails again. They cancel. Every. Single. Month.",
+        "Meera's failed UPI payment? A WhatsApp nudge with a 1-tap retry link lands before she even notices.",
+        "Customers who've gone quiet for weeks get a warm, personal-sounding win-back message — not a generic blast.",
       ],
       hi: [
-        "मेरे सब्सक्राइबर्स के ऑटो-डेबिट महीने के अंत में फेल हो जाते हैं — सैलरी अभी आई नहीं होती।",
-        "मैं अगली सुबह रीट्राई करती हूँ। फिर फेल। वे कैंसल कर देते हैं। हर। एक। महीने।",
+        "मीरा का फेल UPI पेमेंट? उसे पता चलने से पहले ही एक 1-टैप रीट्राई लिंक वाला WhatsApp मैसेज पहुँच जाता है।",
+        "हफ़्तों से चुप बैठे ग्राहकों को एक गर्मजोशी भरा, निजी-सा लगने वाला विन-बैक मैसेज मिलता है — कोई जेनेरिक ब्रॉडकास्ट नहीं।",
       ],
     },
-    classId: 3,
   },
   {
-    id: "class-4",
-    pose: "tired",
+    id: "voice-call",
+    pose: "hips",
     lines: {
       en: [
-        "My biggest client — one of India's giant delivery apps — is 45 days late on a ₹2.1 lakh invoice.",
-        "“Next week,” they keep saying. My team's spent hours chasing a promise.",
+        "When a customer needs more than a message, REX picks up the phone itself and calls — in Hinglish, like a real support call.",
+        "No script-reading. It listens, negotiates, and gets a Promise-to-Pay or closes the sale, live.",
       ],
       hi: [
-        "मेरा सबसे बड़ा क्लाइंट — भारत की एक बड़ी डिलीवरी ऐप — ₹2.1 लाख के इनवॉइस पर 45 दिन लेट है।",
-        "“अगले हफ़्ते,” वे कहते रहते हैं। मेरी टीम घंटों बस एक वादे के पीछे भागती रहती है।",
+        "जब किसी ग्राहक को सिर्फ़ मैसेज से ज़्यादा चाहिए — REX खुद फ़ोन उठाता है और कॉल करता है, हिंग्लिश में, एक असली सपोर्ट कॉल की तरह।",
+        "कोई रटा-रटाया स्क्रिप्ट नहीं। यह सुनता है, बातचीत करता है, और लाइव में Promise-to-Pay लेता है या बिक्री पूरी करता है।",
       ],
     },
-    classId: 4,
+  },
+  {
+    id: "cua-reveal",
+    pose: "hopeful",
+    lines: {
+      en: [
+        "But messaging and calling are just two things it can do. REX can actually use a computer — click, type, navigate — exactly like I would.",
+        "Log into the bank's dispute portal and file a chargeback. Update my Paytm dashboard. Re-order stock on a supplier's site. On its own, end to end.",
+      ],
+      hi: [
+        "पर मैसेज भेजना और कॉल करना तो सिर्फ़ दो काम हैं जो यह कर सकता है। REX असल में कंप्यूटर इस्तेमाल कर सकता है — क्लिक करना, टाइप करना, नेविगेट करना — बिल्कुल मेरी तरह।",
+        "बैंक के डिस्प्यूट पोर्टल में लॉगिन करके चार्जबैक फाइल करना। मेरा Paytm डैशबोर्ड अपडेट करना। सप्लायर की साइट से स्टॉक दोबारा ऑर्डर करना। खुद से, शुरू से आख़िर तक।",
+      ],
+    },
   },
   {
     id: "turn",
@@ -138,8 +134,8 @@ export const STORY: StoryBeat[] = [
     id: "rex",
     pose: "hopeful",
     lines: {
-      en: ["Meet REX — my Revenue Execution Engine."],
-      hi: ["मिलिए REX से — मेरा Revenue Execution Engine।"],
+      en: ["Meet REX — a Computer-Use Agent built to run my revenue, not just talk about it."],
+      hi: ["मिलिए REX से — एक Computer-Use Agent, जो सिर्फ़ बात नहीं करता, मेरा रेवेन्यू खुद चलाता है।"],
     },
   },
 ];

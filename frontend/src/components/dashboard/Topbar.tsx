@@ -48,8 +48,8 @@ export default function Topbar() {
         <button
           onClick={reseed}
           disabled={reseeding}
-          className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-white transition-opacity disabled:opacity-60"
-          style={{ background: "var(--d-ink)" }}
+          className="rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-opacity disabled:opacity-60"
+          style={{ background: "var(--d-ink)", color: "var(--d-bg)" }}
           title="Rebuild the demo dataset"
         >
           {reseeding ? d.topbar.reseeding : d.topbar.reset}

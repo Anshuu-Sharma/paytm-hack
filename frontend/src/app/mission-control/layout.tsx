@@ -6,6 +6,7 @@ import Topbar from "@/components/dashboard/Topbar";
 import { DashboardRefreshProvider } from "@/lib/dashboard/refresh";
 import { ExplorerFilterProvider } from "@/lib/dashboard/explorerFilter";
 import { RexRunProvider } from "@/lib/dashboard/rexrun";
+import { ChatHistoryProvider } from "@/lib/dashboard/ChatHistoryContext";
 
 /**
  * Mission Control shell — the dark cinematic marketing chrome is swapped for a
@@ -25,6 +26,7 @@ export default function MissionControlLayout({
   }, []);
 
   return (
+    <ChatHistoryProvider>
     <DashboardRefreshProvider>
       <ExplorerFilterProvider>
       <RexRunProvider>
@@ -41,5 +43,6 @@ export default function MissionControlLayout({
       </RexRunProvider>
       </ExplorerFilterProvider>
     </DashboardRefreshProvider>
+    </ChatHistoryProvider>
   );
 }

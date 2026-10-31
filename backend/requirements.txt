@@ -3,11 +3,13 @@ uvicorn==0.52.4
 sqlalchemy==2.0.52
 pydantic==2.13.4
 pydantic-settings==2.15.0
-cryptography==50.0.1
+cryptography==46.0.4
 google-genai==2.20.0
 langgraph==1.2.11
 langgraph-checkpoint-sqlite==3.1.1
 twilio==9.11.0
+sarvamai
+websockets
 
 # Testing
 pytest==9.1.1
